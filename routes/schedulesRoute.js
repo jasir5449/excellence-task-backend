@@ -6,8 +6,8 @@ const csv = require('csvtojson');
 const Classes = require("../models/Class");
 const moment = require("moment");
 const Schedule = require("../models/Schedule");
+const Settings = require("../models/Settings");
  
-
 
 const fileStorage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -32,23 +32,39 @@ async function getRandomGeneratedNumber() {
 
 router.post("/addRegistrations", upload.single('file'), async function (req, res) {
   try {
+    const appConfig = await Settings.findOne()
+
+    const student_max_class_day     =  appConfig?.student_max_class_day || process.env.STUDENT_MAXIMUM_CLASS_PER_DAY
+    const instructor_max_class_day  =  appConfig?.instructor_max_class_day || process.env.INSTRUCTOR_MAXIMUM_CLASS_PER_DAY
+    const classtype_max_class_day   =  appConfig?.classtype_max_class_day || process.env.MAXIMUM_NUMBER_CLASS_TYPE_PER_DAY
+    const class_duration            =  appConfig?.class_duration || process.env.DURATION_OF_CLASS
+    
     const jsonArray = await csv().fromFile(req.file.path);
 
+    let resultarray =[];
+
     for (let i = 0; i < jsonArray.length; i++) {
+
       let item = jsonArray[i];
+      resultarray.push(item);
+
       try {
         let studentData = await User.findOne({ 'user_id_number': +item.studentID, userType: 'student' });
         let classData = await Classes.findOne({ 'class_id_number': +item.classID })
         let instructorData = await User.findOne({ 'user_id_number': +item.instructorID, userType: 'instructor' })
 
         const sheduleData = await Schedule.findOne({ 'registrationID': Number(item?.registrationID) }).populate('studentID').populate('instructorID').populate('classID')
-       
+          if(!sheduleData  && (item.action === 'update' || item.action === 'delete' )){
+             resultarray[i].status = {code:1000, message:'Registration ID not exists'}
+             continue; 
+          }
+
         let newSchedule = new Schedule();
         let exist_schedlue_checking ;
 
         if (item.action === 'new' || item.action === 'update') {
           const startClass = moment(item.dateTimeStartOfClass, 'DD-MM-YYYY HH:mm').format('YYYY-MM-DD[T]HH:mm:ss')
-          const endClass = moment(new Date(startClass)).add(process.env.DURATION_OF_CLASS, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
+          const endClass = moment(new Date(startClass)).add(class_duration, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
           const newStartDate = moment(new Date(startClass)).add(4, 'hours')
           const newEndDate=  moment(new Date(endClass)).add(4, 'hours')
 
@@ -81,23 +97,44 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
 
           exist_schedlue_checking =   await Schedule.findOne({
 
-            $or:[{
-                studentID:studentData?._id
-              },
-              {
-               instructorID:instructorData?._id
-            }],
-            $or:[
-              {dateTimeStartOfClass:
-                {$gte:new Date(newStartDate).toISOString(),
-                 $lte:new Date(newEndDate).toISOString()}
-              },
-              {dateTimeEndOfClass:
-                {$gte:new Date(newStartDate).toISOString(),
-                  $lte:new Date(newEndDate).toISOString()}
+            $and:[{
+                $or:[{
+                  studentID:studentData?._id
+                },
+                {
+                instructorID:instructorData?._id
+                }],
+             },
+             {
+              $or:[
+                {dateTimeStartOfClass:
+                  {$gte:new Date(newStartDate).toISOString(),
+                   $lte:new Date(newEndDate).toISOString()}
+                },
+                {dateTimeEndOfClass:
+                  {$gte:new Date(newStartDate).toISOString(),
+                    $lte:new Date(newEndDate).toISOString()}
+                }
+              ]
+             }
+          ]})
+
+            if(exist_schedlue_checking){
+              let msg ='';
+              if(exist_schedlue_checking.instructorID === item.instructorID && exist_schedlue_checking.studentID === item.studentID ){
+                 msg = `Student & Instructor Already Scheduled class this time slot`
               }
-            ]
-           })
+              else if(exist_schedlue_checking.instructorID === item.instructorID){
+                 msg = `Instructor Already Scheduled class this time slot`
+              }
+              else{
+                msg = `Student Already Scheduled class this time slot`
+              }
+              resultarray[i].status = {code:1001, message:msg};
+              continue; 
+
+            }
+              
 
             const today = new Date(newStartDate);
             today.setHours(0, 0, 0, 0);
@@ -127,24 +164,28 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
 
               console.log("student_per_day===",student_per_day,instructor_per_day,class_per_day)
 
-              if(student_per_day >= process.env.STUDENT_MAXIMUM_CLASS_PER_DAY)
-                  console.log(`a student cannot schedule more than ${process.env.STUDENT_MAXIMUM_CLASS_PER_DAY} classes in a day`)
-
-              if(instructor_per_day >= process.env.INSTRUCTOR_MAXIMUM_CLASS_PER_DAY)
-                  console.log(`a Instructor cannot schedule more than ${process.env.INSTRUCTOR_MAXIMUM_CLASS_PER_DAY} classes in a day`)
-
-              if(class_per_day >= process.env.MAXIMUM_NUMBER_CLASS_TYPE_PER_DAY)
-                  console.log(`a maximum number of classes per class-type that can be scheduled in a day is ${process.env.MAXIMUM_NUMBER_CLASS_TYPE_PER_DAY}`)
-
-             console.log("Studnt/instructor already have same schedule for this time period.....",exist_schedlue_checking)
+              if(student_per_day >= student_max_class_day){
+                resultarray[i].status = {code:1002, message:`a student cannot schedule more than ${student_max_class_day} classes in a day`}
+                continue; 
+              }
+                
+              if(instructor_per_day >= instructor_max_class_day){
+                resultarray[i].status ={code:1003, message:`a Instructor cannot schedule more than ${instructor_max_class_day} classes in a day`}
+                continue; 
+              }
+         
+              if(class_per_day >= classtype_max_class_day){
+                resultarray[i].status = {code:1004, message:`a maximum number of classes per class-type that can be scheduled in a day is ${classtype_max_class_day}`}
+                continue; 
+              }
+            
         
          }
 
 
-        if (item.action === 'new' && !exist_schedlue_checking ) {
-
+        if (item.action === 'new'  ) {
           const startClass = moment(item.dateTimeStartOfClass, 'DD-MM-YYYY HH:mm').format('YYYY-MM-DD[T]HH:mm:ss')
-          const endClass = moment(new Date(startClass)).add(process.env.DURATION_OF_CLASS, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
+          const endClass = moment(new Date(startClass)).add(class_duration, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
           newSchedule.studentID = studentData._id
           newSchedule.classID = classData._id
           newSchedule.instructorID = instructorData._id
@@ -152,17 +193,15 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
           newSchedule.dateTimeEndOfClass = moment(new Date(endClass)).add(4, 'hours')
           newSchedule.registrationID = await getRandomGeneratedNumber()
           //console.log("newSchedule",newSchedule)
-          await newSchedule.save()
+          await newSchedule.save();
+          resultarray[i].status = {code:1005, message:'New Schedule Added'}
         }
 
         else if (item.action === 'update') {
           const startClass = moment(item.dateTimeStartOfClass, 'DD-MM-YYYY HH:mm').format('YYYY-MM-DD[T]HH:mm:ss')
           const endClass = moment(new Date(startClass)).add(45, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
 
-          if (sheduleData === null)
-            console.log('no shedules founded...')
-          else if(!exist_schedlue_checking) {
-              const updatedData = await Schedule.findOneAndUpdate({
+            await Schedule.findOneAndUpdate({
                 registrationID: sheduleData?.registrationID
               },
                 {
@@ -172,19 +211,12 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
                   dateTimeStartOfClass: moment(new Date(startClass)).add(4, 'hours'),
                   dateTimeEndOfClass: moment(new Date(endClass)).add(4, 'hours')
                 })
-              console.log("updatedData", updatedData)
-            
-
-          }
-
+             
+                resultarray[i].status = {code:1006, message:'Schedule Updated Success'}
         }
         else if (item.action === 'delete') {
-          if (sheduleData === null)
-            console.log('no shedules founded for delete...')
-          else {
-            await Schedule.findOneAndDelete({ registrationID: sheduleData?.registrationID})
-          }
-
+            await Schedule.findOneAndDelete({ registrationID: sheduleData?.registrationID});
+            resultarray[i].status = {code:1007, message:'Schedule Deleted Success'}
         }
 
 
@@ -194,8 +226,7 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
       }
     };
 
-
-    res.send({ msg: 'success', data: jsonArray });
+    res.json({ msg: 'success', data: resultarray });
 
   } catch (error) {
     res.status(500).json(error);
@@ -252,7 +283,6 @@ router.get("/get-graph-data", async (req, res) => {
         $sort: { '_id': 1 },
       },
     ]);
-    console.log("schedules22233",schedules)
     res.send({data:schedules});
   } catch (error) {
     res.status(500).json(error);
