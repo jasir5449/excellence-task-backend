@@ -195,8 +195,65 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
     };
 
 
-    res.send({ auth: true, data: jsonArray });
+    res.send({ msg: 'success', data: jsonArray });
 
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+
+router.post("/get-all-schedules", async (req, res) => {
+  const { frequency, selectedRange , type,searchValue } = req.body;
+  console.log("searchValue==",searchValue)
+  try {
+    const schedules = await Schedule.find({
+     
+
+      ...(
+        frequency === '0' ? '' :
+        (frequency !== "custom"
+        ? {
+            dateTimeStartOfClass: {
+              $gt: moment().subtract(Number(req.body.frequency), "d").toDate(),
+            },
+          }
+        : {
+            dateTimeStartOfClass: {
+              $gte:moment( selectedRange[0]).startOf('day'),
+              $lte:moment( selectedRange[1]).endOf('day'),
+            },
+          }
+          
+          )
+        ),
+      ...(type!=='all' && {classID:type}),
+    }).populate('studentID').populate('instructorID').populate('classID');
+
+    console.log("schedules",schedules)
+
+    res.send(schedules);
+  } catch (error) {
+    res.status(500).json(error);
+  }
+});
+
+
+router.get("/get-graph-data", async (req, res) => {
+  try {
+    const schedules =  await Schedule.aggregate([
+      {
+        $group : {
+          _id :{ $dateToString: { format: "%Y-%m-%d", date: "$dateTimeStartOfClass"} },
+          count: { $sum: 1 }
+       }
+      },
+      {
+        $sort: { '_id': 1 },
+      },
+    ]);
+    console.log("schedules22233",schedules)
+    res.send({data:schedules});
   } catch (error) {
     res.status(500).json(error);
   }
