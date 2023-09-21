@@ -39,6 +39,15 @@ async function getRandomGeneratedNumber() {
 router.post("/addRegistrations", upload.single('file'), async function (req, res) {
   try {
     
+    const columns = [
+      'registrationID',
+      'studentID',
+      'instructorID',
+      'classID',
+      'dateTimeStartOfClass',
+      'action'
+    ]
+
     const appConfig = await Settings.findOne()
 
     const student_max_class_day     =  appConfig?.student_max_class_day || process.env.STUDENT_MAXIMUM_CLASS_PER_DAY
@@ -47,6 +56,17 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
     const class_duration            =  appConfig?.class_duration || process.env.DURATION_OF_CLASS
     
     const jsonArray = await csv().fromFile(req.file.path);
+    
+    if(jsonArray.length === 0){
+      return res.send({status:false, msg:"No Data found in this csv file...."})
+    }
+
+    const keys = Object.keys(jsonArray[0])
+    const invalidColumns = keys.filter(x => !columns.includes(x))
+    
+    if(invalidColumns.length > 0){
+      return res.send({status:false, msg:"Invalid Csv Column Name Found!.."})
+    }
 
     let resultarray =[];
 
@@ -235,10 +255,10 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
       }
     };
 
-    res.json({ msg: 'success', data: "Upload" });
+    res.json({ status:true, msg: 'File uploaded successfully'});
 
   } catch (error) {
-    res.status(500).json(error);
+    res.status(500).json({status:false, msg:error});
   }
 });
 

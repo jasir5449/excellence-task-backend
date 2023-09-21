@@ -22,7 +22,7 @@ app.use(bodyParser.urlencoded({extended: true}));
  app.use('/api/settings/' , settingsRoute) 
 
 app.get('/' , (req, res)=>{
-    res.send('Backend API for class schedule system')
+    res.send('<<<<..... Backend API for class schedules is working ......>>>>')
 })
 
 io.on('connection',() => {
