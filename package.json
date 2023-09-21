@@ -26,6 +26,7 @@
     "socket.io": "^4.7.2"
   },
   "devDependencies": {
+    "@rollup/plugin-commonjs": "^25.0.4",
     "rollup": "^3.29.2"
   }
 }
