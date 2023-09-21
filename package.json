@@ -23,5 +23,8 @@
     "multer": "^1.4.5-lts.1",
     "nodemon": "^3.0.1",
     "socket.io": "^4.7.2"
+  },
+  "devDependencies": {
+    "rollup": "^3.29.2"
   }
 }
