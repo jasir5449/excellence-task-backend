@@ -46,7 +46,7 @@ router.delete('/delete', async (req, res) => {
   }
 });
 
-router.get('/listClasses', async (req, res) => {
+router.get('/fetch-classess-instructor', async (req, res) => {
     try {
       const classes = await Class.find();
       const instructors = await User.find({userType:'instructor'})

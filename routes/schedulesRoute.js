@@ -10,6 +10,7 @@ const Settings = require("../models/Settings");
 const {io} = require('../socket')
  
 
+//File Uploading Using Multer library
 const fileStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, 'uploads');
@@ -18,8 +19,10 @@ const fileStorage = multer.diskStorage({
     cb(null, new Date().toISOString() + '-' + file.originalname);
   }
 });
+
 const upload = multer({ storage: fileStorage });
 
+// Normal Function for genrating Random Registration ID it will check random ID already exist or not
 async function getRandomGeneratedNumber() {
   const number = Math.floor(Math.random() * 1000);
   try {
@@ -31,6 +34,7 @@ async function getRandomGeneratedNumber() {
 }
 
 
+//addRegistration API for uploading CSV s middlleware using multer and error managment for csv data and crud operations
 router.post("/addRegistrations", upload.single('file'), async function (req, res) {
   try {
     
@@ -68,10 +72,6 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
         if (item.action === 'new' || item.action === 'update') {
           const newStartDate = moment(item.dateTimeStartOfClass, 'DD-MM-YYYY HH:mm').format('YYYY-MM-DD[T]HH:mm:ss')
           const newEndDate = moment(new Date(newStartDate)).add(class_duration, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
-          // const newStartDate = moment(new Date(startClass)).add(4, 'hours')
-          // const newEndDate=  moment(new Date(endClass)).add(4, 'hours')
-
-          // console.log(new Date(newStartDate).toISOString(),new Date(newEndDate).toISOString())
        
 
           if (studentData === null) {
@@ -121,7 +121,6 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
               ]
              }
           ]}).populate('studentID').populate('instructorID');
-          console.log("exist_schedlue_checking==",exist_schedlue_checking)
 
             if(exist_schedlue_checking){
               let msg ='';
@@ -167,8 +166,6 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
                    $lte:new Date(endOfDay).toISOString()}
               })
 
-              // console.log("student_per_day===",student_per_day,instructor_per_day,class_per_day)
-
               if(student_per_day >= student_max_class_day){
                 resultarray[i].status = {code:1002, message:`a student cannot schedule more than ${student_max_class_day} classes in a day`}
                 io.emit("upload-response",resultarray[i])
@@ -200,7 +197,6 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
           newSchedule.dateTimeStartOfClass = startClass,//moment(new Date(startClass)).add(4, 'hours')
           newSchedule.dateTimeEndOfClass = endClass,//moment(new Date(endClass)).add(4, 'hours')
           newSchedule.registrationID = await getRandomGeneratedNumber()
-          //console.log("newSchedule",newSchedule)
           await newSchedule.save();
           resultarray[i].status = {code:1005, message:'New Schedule Added'}
           io.emit("upload-response",resultarray[i])
@@ -246,12 +242,11 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
 });
 
 
+// Fecthing Class Schedule Data and Filter by custom date , weeks, months, year, classtype and instructor
 router.post("/get-all-schedules", async (req, res) => {
   const { frequency, selectedRange , type,ins } = req.body;
   try {
     const schedules = await Schedule.find({
-     
-
       ...(
         frequency === '0' ? '' :
         (frequency !== "custom"
@@ -273,8 +268,6 @@ router.post("/get-all-schedules", async (req, res) => {
       ...(ins!=='all' && {instructorID:ins}),
     }).populate('studentID').populate('instructorID').populate('classID');
 
-    // console.log("schedules",schedules)
-
     res.send(schedules);
   } catch (error) {
     res.status(500).json(error);
@@ -282,6 +275,7 @@ router.post("/get-all-schedules", async (req, res) => {
 });
 
 
+// For fetching Data for Line Chart - Number of Classes Per day
 router.get("/get-graph-data", async (req, res) => {
   try {
     const schedules =  await Schedule.aggregate([

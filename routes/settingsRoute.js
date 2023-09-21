@@ -5,7 +5,6 @@ const router = express.Router();
 
 router.post("/add-config-data", async function (req, res) {
   try {
-    console.log(req.body)
     const newlSettings = new Settings(req.body);
     await newlSettings.save();
 
