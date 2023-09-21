@@ -8,7 +8,8 @@
     "server": "nodemon server.js",
     "client": "npm start --prefix client",
     "dev": "nodemon server.js",
-    "start": "node server.js"
+    "start": "node build/index.js",
+    "build": "rollup -c"
   },
   "author": "",
   "license": "ISC",
