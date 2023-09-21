@@ -1,5 +1,6 @@
 const express = require("express");
 const Class = require("../models/Class");
+const User = require("../models/User");
 const router = express.Router();
 
 router.post("/new", async function (req, res) {
@@ -48,12 +49,16 @@ router.delete('/delete', async (req, res) => {
 router.get('/listClasses', async (req, res) => {
     try {
       const classes = await Class.find();
+      const instructors = await User.find({userType:'instructor'})
   
       if (!classes) {
         return res.status(404).json({ error: 'Classes not found' });
       }
+      if (!instructors) {
+        return res.status(404).json({ error: 'Instructors not found' });
+      }
   
-      res.json({ message: 'All Classes',data:classes });
+      res.json({ message: 'All Classes',data:{classes:classes,instructors:instructors} });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

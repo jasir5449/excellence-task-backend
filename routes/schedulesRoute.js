@@ -7,6 +7,7 @@ const Classes = require("../models/Class");
 const moment = require("moment");
 const Schedule = require("../models/Schedule");
 const Settings = require("../models/Settings");
+const {io} = require('../socket')
  
 
 const fileStorage = multer.diskStorage({
@@ -32,6 +33,7 @@ async function getRandomGeneratedNumber() {
 
 router.post("/addRegistrations", upload.single('file'), async function (req, res) {
   try {
+    
     const appConfig = await Settings.findOne()
 
     const student_max_class_day     =  appConfig?.student_max_class_day || process.env.STUDENT_MAXIMUM_CLASS_PER_DAY
@@ -56,6 +58,7 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
         const sheduleData = await Schedule.findOne({ 'registrationID': Number(item?.registrationID) }).populate('studentID').populate('instructorID').populate('classID')
           if(!sheduleData  && (item.action === 'update' || item.action === 'delete' )){
              resultarray[i].status = {code:1000, message:'Registration ID not exists'}
+             io.emit("upload-response",resultarray[i])
              continue; 
           }
 
@@ -63,12 +66,12 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
         let exist_schedlue_checking ;
 
         if (item.action === 'new' || item.action === 'update') {
-          const startClass = moment(item.dateTimeStartOfClass, 'DD-MM-YYYY HH:mm').format('YYYY-MM-DD[T]HH:mm:ss')
-          const endClass = moment(new Date(startClass)).add(class_duration, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
-          const newStartDate = moment(new Date(startClass)).add(4, 'hours')
-          const newEndDate=  moment(new Date(endClass)).add(4, 'hours')
+          const newStartDate = moment(item.dateTimeStartOfClass, 'DD-MM-YYYY HH:mm').format('YYYY-MM-DD[T]HH:mm:ss')
+          const newEndDate = moment(new Date(newStartDate)).add(class_duration, 'minutes').format('YYYY-MM-DD[T]HH:mm:ss')
+          // const newStartDate = moment(new Date(startClass)).add(4, 'hours')
+          // const newEndDate=  moment(new Date(endClass)).add(4, 'hours')
 
-          console.log(new Date(newStartDate).toISOString(),new Date(newEndDate).toISOString())
+          // console.log(new Date(newStartDate).toISOString(),new Date(newEndDate).toISOString())
        
 
           if (studentData === null) {
@@ -117,20 +120,22 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
                 }
               ]
              }
-          ]})
+          ]}).populate('studentID').populate('instructorID');
+          console.log("exist_schedlue_checking==",exist_schedlue_checking)
 
             if(exist_schedlue_checking){
               let msg ='';
-              if(exist_schedlue_checking.instructorID === item.instructorID && exist_schedlue_checking.studentID === item.studentID ){
+              if(exist_schedlue_checking.instructorID.user_id_number === +item.instructorID && exist_schedlue_checking.studentID.user_id_number === +item.studentID ){
                  msg = `Student & Instructor Already Scheduled class this time slot`
               }
-              else if(exist_schedlue_checking.instructorID === item.instructorID){
+              else if(exist_schedlue_checking.instructorID.user_id_number === +item.instructorID){
                  msg = `Instructor Already Scheduled class this time slot`
               }
               else{
                 msg = `Student Already Scheduled class this time slot`
               }
               resultarray[i].status = {code:1001, message:msg};
+              io.emit("upload-response",resultarray[i])
               continue; 
 
             }
@@ -162,20 +167,23 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
                    $lte:new Date(endOfDay).toISOString()}
               })
 
-              console.log("student_per_day===",student_per_day,instructor_per_day,class_per_day)
+              // console.log("student_per_day===",student_per_day,instructor_per_day,class_per_day)
 
               if(student_per_day >= student_max_class_day){
                 resultarray[i].status = {code:1002, message:`a student cannot schedule more than ${student_max_class_day} classes in a day`}
+                io.emit("upload-response",resultarray[i])
                 continue; 
               }
                 
               if(instructor_per_day >= instructor_max_class_day){
                 resultarray[i].status ={code:1003, message:`a Instructor cannot schedule more than ${instructor_max_class_day} classes in a day`}
+                io.emit("upload-response",resultarray[i])
                 continue; 
               }
          
               if(class_per_day >= classtype_max_class_day){
                 resultarray[i].status = {code:1004, message:`a maximum number of classes per class-type that can be scheduled in a day is ${classtype_max_class_day}`}
+                io.emit("upload-response",resultarray[i])
                 continue; 
               }
             
@@ -189,12 +197,13 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
           newSchedule.studentID = studentData._id
           newSchedule.classID = classData._id
           newSchedule.instructorID = instructorData._id
-          newSchedule.dateTimeStartOfClass = moment(new Date(startClass)).add(4, 'hours')
-          newSchedule.dateTimeEndOfClass = moment(new Date(endClass)).add(4, 'hours')
+          newSchedule.dateTimeStartOfClass = startClass,//moment(new Date(startClass)).add(4, 'hours')
+          newSchedule.dateTimeEndOfClass = endClass,//moment(new Date(endClass)).add(4, 'hours')
           newSchedule.registrationID = await getRandomGeneratedNumber()
           //console.log("newSchedule",newSchedule)
           await newSchedule.save();
           resultarray[i].status = {code:1005, message:'New Schedule Added'}
+          io.emit("upload-response",resultarray[i])
         }
 
         else if (item.action === 'update') {
@@ -213,20 +222,23 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
                 })
              
                 resultarray[i].status = {code:1006, message:'Schedule Updated Success'}
+                io.emit("upload-response",resultarray[i])
         }
         else if (item.action === 'delete') {
             await Schedule.findOneAndDelete({ registrationID: sheduleData?.registrationID});
             resultarray[i].status = {code:1007, message:'Schedule Deleted Success'}
+            io.emit("upload-response",resultarray[i])
         }
 
 
       }
       catch (err) {
-        console.log(err)
+        resultarray[i].status = {code:1010, message:"Error on uploading this line"}
+        io.emit("upload-response",resultarray[i])
       }
     };
 
-    res.json({ msg: 'success', data: resultarray });
+    res.json({ msg: 'success', data: "Upload" });
 
   } catch (error) {
     res.status(500).json(error);
@@ -235,8 +247,7 @@ router.post("/addRegistrations", upload.single('file'), async function (req, res
 
 
 router.post("/get-all-schedules", async (req, res) => {
-  const { frequency, selectedRange , type,searchValue } = req.body;
-  console.log("searchValue==",searchValue)
+  const { frequency, selectedRange , type,ins } = req.body;
   try {
     const schedules = await Schedule.find({
      
@@ -259,9 +270,10 @@ router.post("/get-all-schedules", async (req, res) => {
           )
         ),
       ...(type!=='all' && {classID:type}),
+      ...(ins!=='all' && {instructorID:ins}),
     }).populate('studentID').populate('instructorID').populate('classID');
 
-    console.log("schedules",schedules)
+    // console.log("schedules",schedules)
 
     res.send(schedules);
   } catch (error) {

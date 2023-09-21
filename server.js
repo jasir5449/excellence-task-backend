@@ -1,8 +1,8 @@
-const express = require('express')
 require('dotenv').config();
+const express = require('express')
+const { app, server, io } = require('./socket')
 const dbConnect = require('./dbConnect')
 var bodyParser = require('body-parser')
-const app = express()
 const cors = require('cors')
 app.use(express.json({limit: '50mb'}))
 const path = require('path')
@@ -10,6 +10,7 @@ const usersRoute = require('./routes/usersRoute')
 const schedulesRoute = require('./routes/schedulesRoute')
 const classesRoute = require('./routes/classesRoute')
 const settingsRoute = require('./routes/settingsRoute')
+
 
 app.use(express.static('documents'))
 app.use(cors('*'))
@@ -24,6 +25,10 @@ app.get('/' , (req, res)=>{
     res.send('check api for expense calculator backend')
 })
 
+io.on('connection',() => {
+    console.log("A connection successfull")
+})
+
 const port =process.env.PORT || 4000
 
-app.listen(port, () => console.log(`Node JS Server started at port ${port}!`))
+server.listen(port, () => console.log(`Node JS Server started at port ${port}!`))
